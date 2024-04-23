@@ -40,4 +40,4 @@ This setup frees the developer in you and can code from anywhere in the world wi
 See the Env Sample File on how to set it up.
 
 From
-Visveswaran Vaidyanathan[@StaticVish]`
+Visveswaran Vaidyanathan[@StaticVish]
