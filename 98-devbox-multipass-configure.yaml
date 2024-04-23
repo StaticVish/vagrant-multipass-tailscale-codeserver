@@ -1,0 +1,64 @@
+- name: Remove PJK Mistakes
+  hosts: localhost
+  become: true
+  vars_files:  
+    - vars/main.yml
+    - vars/multipass.yml
+  tasks:
+    - name: Set architecture-specific variable
+      set_fact:
+        architecture_suffix: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
+    - include_tasks: tasks/00-remover.yml
+  handlers:
+    - include: handlers/main.yml
+
+- name: Configure the base devbox.
+  hosts: localhost
+  become: true
+  vars_files:  
+    - vars/main.yml  
+    - vars/multipass.yml  
+  tasks:
+    - name: Set architecture-specific variable
+      set_fact:
+        architecture_suffix: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
+
+    - include_tasks: tasks/01-base-packages.yml
+    - include_tasks: tasks/02-docker-configuration.yml
+    - include_tasks: tasks/03-devbox-base-software-setup.yml
+  handlers:
+    - include: handlers/main.yml        
+
+- name: Software Installation as {{ ansible_env.USER }}
+  hosts: localhost
+  become: no
+  vars_files:  
+    - vars/main.yml  
+    - vars/multipass.yml  
+  roles:
+    - role: gantsign.sdkman
+      sdkman_users:
+        - "{{ ansible_env.USER }}"
+  tasks:
+    - name: Set architecture-specific variable
+      set_fact:
+        architecture_suffix: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
+
+    - include_tasks: tasks/04-devbox-user-software-setup.yml
+  handlers:
+    - include: handlers/main.yml        
+
+- name: Final APT Package CleanUp
+  hosts: localhost
+  become: true
+  vars_files:  
+    - vars/main.yml  
+    - vars/multipass.yml  
+  tasks:
+    - name: Set architecture-specific variable
+      set_fact:
+        architecture_suffix: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' }}"
+          
+    - include_tasks: tasks/90-cleanup.yml
+  handlers:
+    - include: handlers/main.yml        

@@ -1,0 +1,367 @@
+- name: Create temporary build directory
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: build
+  register: tmpdir
+
+- name: Check if 'terraform' command is available
+  shell: |-
+    command -v terraform
+  register: terraform_installed
+  ignore_errors: yes
+  changed_when: false
+
+- name: Install Terraform
+  shell: |-
+    sudo curl --silent -L https://releases.hashicorp.com/terraform/{{ terraform_version }}/terraform_{{ terraform_version }}_linux_amd64.zip -o {{ tmpdir.path }}/terraform_{{ terraform_version }}_linux_amd64.zip
+    sudo unzip -o {{ tmpdir.path }}/terraform_{{ terraform_version }}_linux_amd64.zip -d /usr/local/sbin/
+    sudo rm -Rf {{ tmpdir.path }}/terraform_{{ terraform_version }}_linux_amd64.zip
+  when: terraform_installed.rc != 0
+
+### Terragrunt Setup
+- name: Set Terragrunt download URL for amd64
+  ansible.builtin.set_fact:
+    terragrunt_download_url: "https://github.com/gruntwork-io/terragrunt/releases/download/v{{ terragrunt_version }}/terragrunt_linux_amd64"
+  when: ansible_architecture == "x86_64"
+
+- name: Set Terragrunt download URL for arm64
+  ansible.builtin.set_fact:
+    terragrunt_download_url: "https://github.com/gruntwork-io/terragrunt/releases/download/v{{ terragrunt_version }}/terragrunt_linux_arm64"
+  when: ansible_architecture == "aarch64"
+
+- name: Check if Terragrunt is already installed
+  ansible.builtin.stat:
+    path: /usr/local/sbin/terragrunt
+  register: terragrunt_stat
+
+- name: Download and install Terragrunt
+  ansible.builtin.shell:
+    cmd: "curl --silent -L {{ terragrunt_download_url }} -o /usr/local/sbin/terragrunt && chmod +x /usr/local/sbin/terragrunt"
+  when: terragrunt_stat.stat.exists == false    
+###
+
+
+# Installation for aws-sso 
+- name: Check if 'aws-sso' command is available
+  shell: |-
+    command -v aws-sso
+  register: aws_sso_installed
+  ignore_errors: yes
+  changed_when: false
+
+- name: Set AWS SSO CLI download URL for amd64
+  ansible.builtin.set_fact:
+    aws_sso_cli_filename: "aws-sso-cli_{{ aws_sso_cli_version }}-1_amd64.deb"
+  when: ansible_architecture == "x86_64"
+
+- name: Set AWS SSO CLI download URL for arm64
+  ansible.builtin.set_fact:
+    aws_sso_cli_filename: "aws-sso-cli_{{ aws_sso_cli_version }}-1_arm64.deb"
+  when: ansible_architecture == "aarch64"
+
+- name: Define AWS SSO CLI download URL
+  ansible.builtin.set_fact:
+    aws_sso_cli_download_url: "https://github.com/synfinatic/aws-sso-cli/releases/download/v{{ aws_sso_cli_version }}/{{ aws_sso_cli_filename }}"
+
+- name: Download AWS SSO CLI package
+  ansible.builtin.get_url:
+    url: "{{ aws_sso_cli_download_url }}"
+    dest: "{{ tmpdir.path }}/{{ aws_sso_cli_filename }}"
+  when: aws_sso_installed.rc != 0    
+
+- name: Install AWS SSO CLI package
+  ansible.builtin.apt:
+    deb: "{{ tmpdir.path }}/{{ aws_sso_cli_filename }}"
+  when: aws_sso_installed.rc != 0    
+# Installation for aws-sso 
+
+- name: Check if 'aws' command is available
+  shell: |-
+    command -v aws
+  register: aws_installed
+  ignore_errors: yes
+  changed_when: false
+
+- name: Download AWS CLI based on architecture
+  get_url:
+    url: "https://awscli.amazonaws.com/awscli-exe-linux-{{ ansible_architecture }}.zip"
+    dest: "{{  tmpdir.path }}/awscliv2.zip"
+    mode: '0755'
+  when: aws_installed.rc != 0
+
+- name: Unzip AWS CLI
+  unarchive:
+    src: "{{  tmpdir.path }}/awscliv2.zip"
+    dest: "{{  tmpdir.path }}"
+    remote_src: yes
+  when: aws_installed.rc != 0
+
+- name: Install AWS CLI
+  command:
+    cmd: "{{  tmpdir.path }}/aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli --update"
+    creates: /usr/local/aws-cli
+  when: aws_installed.rc != 0
+##################################################################################################################
+
+- name: Check if 'task' command is available
+  shell: |-
+    command -v task
+  register: task_installed
+  ignore_errors: yes
+  changed_when: false
+
+- name: Download and install 'task'
+  shell: |-
+    set -o pipefail
+    curl --location https://taskfile.dev/install.sh | sh -s -- -d -b /usr/local/bin
+  when: task_installed.rc != 0
+  args:
+    executable: /bin/bash
+
+- name: Determine architecture for 'yq'
+  set_fact:
+    yq_arch: "{{ 'amd64' if ansible_architecture == 'x86_64' else ('arm64' if ansible_architecture == 'aarch64' else fail('Unsupported architecture')) }}"
+
+- name: Check if 'yq' command is available
+  shell: |-
+    command -v yq
+  register: yq_installed
+  ignore_errors: yes
+  changed_when: false
+
+- name: Download and install 'yq'
+  get_url:
+    url: "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_{{ yq_arch }}"
+    dest: "/usr/local/bin/yq"
+    mode: '0755'
+  when: yq_installed.rc != 0
+
+
+- name: Check if 'code-server' command is available
+  shell: |-
+    systemctl status code-server@{{ box_user }}
+  register: code_server_installed
+  ignore_errors: yes
+  changed_when: false
+
+
+- name: Install and Enable VS Code Server
+  shell: |-
+    sudo curl -fsSL https://code-server.dev/install.sh  -o "{{ tmpdir.path }}/code-server-install.sh"
+    sudo sh {{ tmpdir.path }}/code-server-install.sh
+  args:
+    executable: /bin/bash
+  when: code_server_installed.rc != 0
+
+- name: Check if tailscale command is available
+  shell: |-
+    command -v tailscale
+  register: tailscale_installed
+  ignore_errors: yes
+  changed_when: false
+
+- name: Install tailscale vpn for the devbox 
+  shell: |-
+    curl -fsSL https://tailscale.com/install.sh | sh
+  args:
+    executable: /bin/bash        
+  when: tailscale_installed.rc != 0
+
+- name: Check if Caddy is installed and get its version
+  command: caddy version
+  register: caddy_installed_version
+  ignore_errors: yes
+
+- name: Set fact for Caddy is installed or not
+  set_fact:
+    caddy_is_installed: "{{ 'v' + caddy_version in caddy_installed_version.stdout }}"
+  when: caddy_installed_version.rc == 0
+
+- name: Determine the architecture for the Caddy download
+  set_fact:
+    caddy_arch: "{{ 'amd64' if ansible_architecture == 'x86_64' else 'arm64' if ansible_architecture == 'aarch64' else '386' }}"
+  
+- name: Download Caddy .deb package
+  ansible.builtin.uri:
+    url: "https://github.com/caddyserver/caddy/releases/download/v{{ caddy_version }}/caddy_{{ caddy_version }}_linux_{{ caddy_arch }}.deb"
+    dest: "{{ tmpdir.path }}/caddy_{{ caddy_version }}_linux_{{ caddy_arch }}.deb"
+    method: GET
+  when: caddy_is_installed is not defined or not caddy_is_installed
+
+- name: Install Caddy .deb package
+  ansible.builtin.apt:
+    deb: "{{ tmpdir.path }}/caddy_{{ caddy_version }}_linux_{{ caddy_arch }}.deb"
+  when: caddy_is_installed is not defined or not caddy_is_installed
+
+- name: Enable and Start Caddy
+  systemd:
+    service: caddy
+    state: started
+    enabled: yes
+    daemon_reload: true
+
+- name: Enable and Start Code-Server
+  systemd:
+    service: code-server@{{ box_user }}
+    state: started
+    enabled: yes
+
+- name: Create the Tailscale Script
+  copy:
+    dest: /etc/tailscale-service.sh
+    content: |
+      #!/bin/bash
+
+      # Check Tailscale's backend state
+      BACKEND_STATE=$(tailscale status --active --json | jq -c -r '.BackendState')
+
+      # Check if Tailscale's backend state indicates it's running
+      if [ "$BACKEND_STATE" = "Running" ]; then
+          echo "Tailscale is already connected and serving traffic. No further action needed."
+          exit 0
+      else
+          echo "Tailscale is not connected. Proceeding with setup..."
+      fi
+
+      tailscale down --accept-risk all
+
+      DEVICE_ID=$(curl -s -H "Authorization: Bearer {{ tailscale_api_key }}" https://api.tailscale.com/api/v2/tailnet/{{ tailnet }}/devices | jq -r '.devices[] | select(.name == "{{ git_username }}-devbox.{{ tailscale_domain }}") | .id')
+      
+      curl -X DELETE -H "Authorization: Bearer {{ tailscale_api_key }}" https://api.tailscale.com/api/v2/device/$DEVICE_ID
+      
+      echo "Sleeping for 60 Seconds" && sleep 60s
+
+      tailscale up --auth-key {{ tailscale_auth_key }} --hostname {{ tailscale_device_name }}
+    mode: 0755
+
+- name: Setup Tailscale
+  shell: /bin/bash -x /etc/tailscale-service.sh
+
+- name: Create /etc/letsencrypt directory
+  ansible.builtin.file:
+    path: /etc/letsencrypt
+    state: directory
+    mode: '0755' # Optional: Set the directory permissions
+    recurse: yes  # Ensures that the task behaves like `mkdir -p`
+
+- name: Check if certificate file exists
+  stat:
+    path: /etc/letsencrypt/{{ tailscale_device_name }}.{{ tailscale_domain }}.crt
+  register: cert_file_stat
+
+- name: Get certificate expiration date
+  command: openssl x509 -enddate -noout -in /etc/letsencrypt/{{ tailscale_device_name }}.{{ tailscale_domain }}.crt
+  register: cert_end_date_raw
+  when: cert_file_stat.stat.exists
+
+- name: Extract the end date
+  set_fact:
+    cert_end_date: "{{ cert_end_date_raw.stdout.split('=')[1] }}"
+  when: cert_file_stat.stat.exists
+
+- name: Convert end date to seconds
+  set_fact:
+    cert_end_seconds: "{{ (cert_end_date | to_datetime('%b %d %H:%M:%S %Y %Z')).strftime('%s') | int }}"
+  when: cert_file_stat.stat.exists
+
+- name: Get current date in seconds
+  set_fact:
+    current_seconds: "{{ lookup('pipe','date +%s') | int }}"
+  when: cert_file_stat.stat.exists
+
+- name: Calculate the difference in hours between now and the certificate's end date
+  set_fact:
+    hours_until_expiration: "{{ ((cert_end_seconds | int - current_seconds | int) / 3600) | round(0, 'floor') }}"
+  when: cert_file_stat.stat.exists
+
+- name: Determine if the certificate is expiring within 24 hours
+  debug:
+    msg: "The certificate is expiring within 24 hours."
+  when: cert_file_stat.stat.exists and (hours_until_expiration | int) <= 24
+
+- name: Certificate is not expiring within 24 hours
+  debug:
+    msg: "The certificate is not expiring within 24 hours."
+  when: cert_file_stat.stat.exists and (hours_until_expiration | int) > 24
+
+####         
+- name: Setup Tailscale Certs Folder
+  shell: |-
+    tailscale cert --cert-file /etc/letsencrypt/{{ tailscale_device_name }}.{{ tailscale_domain }}.crt --key-file /etc/letsencrypt/{{ tailscale_device_name }}.{{ tailscale_domain }}.key {{ tailscale_device_name }}.{{ tailscale_domain }}
+    chmod 0644 /etc/letsencrypt/{{ tailscale_device_name }}.{{ tailscale_domain }}.*
+  args:
+    executable: /bin/bash
+  when: (not cert_file_stat.stat.exists) or (cert_file_stat.stat.exists and (hours_until_expiration | int) <= 24)
+
+- name: Create a Folder /etc/caddy
+  file:
+    path: /etc/caddy
+    state: directory
+    mode: '0755'
+
+- name: Check code-server@{{ box_user }} service status
+  systemd:
+    name: code-server@{{ box_user }}
+    state: started  # This will not restart the service if it's already running but will ensure it's started
+
+- name: Wait for 30 seconds
+  pause:
+    seconds: 30
+
+- name: Change bind-addr in code-server config
+  lineinfile:
+    path: /home/{{ box_user }}/.config/code-server/config.yaml
+    regexp: '^bind-addr: 127.0.0.1:8080'
+    line: 'bind-addr: 127.0.0.1:18443'
+    backrefs: yes
+
+- name: Update password in code-server config
+  lineinfile:
+    path: /home/{{ box_user }}/.config/code-server/config.yaml
+    regexp: '^password: .*'
+    line: 'password: Passw0rd!23'
+    backrefs: yes
+
+- name: Grant code-server the capability to bind to well-known ports
+  command: setcap cap_net_bind_service=+ep /usr/lib/code-server/lib/node
+  # You may want to add a check to avoid running this command unnecessarily since Ansible doesn't have a direct module for setcap
+
+- name: Enable and Start Code-Server
+  systemd:
+    service: code-server@{{ box_user }}
+    state: restarted
+    enabled: yes
+    daemon_reload: true
+
+- name: Configure Caddy 
+  copy:
+    dest: /etc/caddy/Caddyfile
+    content: |
+      {
+          debug
+          http_port 50080
+      }
+      {{ tailscale_device_name }}.{{ tailscale_domain }}:8443 {
+          log
+          tls /etc/letsencrypt/{{ tailscale_device_name }}.{{ tailscale_domain }}.crt /etc/letsencrypt/{{ tailscale_device_name }}.{{ tailscale_domain }}.key
+          reverse_proxy 127.0.0.1:18443
+      }
+    validate: /usr/bin/caddy fmt --overwrite %s
+
+- name: Enable and Start Caddy
+  systemd:
+    service: caddy
+    state: restarted
+    enabled: yes
+    daemon_reload: true        
+
+- name: Remove the Temp Folder
+  become: true
+  ansible.builtin.file:
+    path: "{{ tmpdir.path }}"
+    state: absent
+
+
+## Start Splitting and modulrizing the tasks. 
+- import_tasks: 03-10-devbox-base-software-setup-sops.yml
+- import_tasks: 03-11-devbox-docker-cleanup-service.yml

@@ -1,0 +1,52 @@
+# Created by https://www.toptal.com/developers/gitignore/api/vagrant,ansible,ansibletower
+# Edit at https://www.toptal.com/developers/gitignore?templates=vagrant,ansible,ansibletower
+
+### Ansible ###
+*.retry
+
+### AnsibleTower ###
+# Ansible runtime and backups
+*.original
+*.tmp
+*.bkp
+*.*~
+
+# Tower runtime roles
+roles/**
+!roles/requirements.yml
+
+# Avoid plain-text passwords
+*pwd*
+*pass*
+*password*
+*.txt
+
+# Exclude all binaries
+*.bin
+*.jar
+*.tar
+*.zip
+*.gzip
+*.tgz
+
+
+### Vagrant ###
+# General
+.vagrant/
+
+# Log files (if you are creating logs in debug mode, uncomment this)
+# *.log
+
+### Vagrant Patch ###
+*.box
+
+# End of https://www.toptal.com/developers/gitignore/api/vagrant,ansible,ansibletower
+roles/**
+
+
+.env
+
+!*.yml
+!*.yaml
+!*.sh
+

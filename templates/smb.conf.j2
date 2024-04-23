@@ -1,0 +1,39 @@
+# Global parameters
+[global]
+        os level = 20
+        server string = %h server (Samba, Ubuntu)
+        usershare allow guests = Yes
+        panic action = /usr/share/samba/panic-action %d
+        logging = file
+        map to guest = Bad User
+        log file = /var/log/samba/log.%m
+        obey pam restrictions = Yes
+        max log size = 1000
+        passwd chat = *Enter\snew\s*\spassword:* %n\n *Retype\snew\s*\spassword:* %n\n *password\supdated\ssuccessfully* .
+        workgroup = WORKGROUP
+        unix password sync = yes
+        socket options = TCP_NODELAY
+        idmap config * : backend = tdb
+        server role = standalone server
+        encrypt passwords = yes
+        pam password change = Yes
+        passwd program = /usr/bin/passwd %u
+
+[homes]
+        browseable = Yes
+        read only = No
+        comment = Home Directories
+        create mask = 0700
+        directory mask = 0700
+        valid users = %S
+        guest ok=no
+        path = /home/%S
+[Works]
+        browseable = Yes
+        read only = no
+        comment = Works Directories
+        create mask = 0700
+        directory mask = 0700
+        valid users = vagrant
+        guest ok=no
+        path = /Works

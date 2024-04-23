@@ -1,0 +1,96 @@
+- name: Create temporary build directory
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: build
+  register: tmpdir
+
+- name: Install Java and GraalVM
+  ansible.builtin.shell: |-
+    source ~/.sdkmanshrc 
+    source ~/.bashrc 
+    source ~/.profile 
+    sdk install java 17.0.9-tem 
+    sdk install java 21.0.2-tem
+    sdk default java 21.0.2-tem
+  args:
+    executable: /bin/bash 
+
+- name: Ensure SDKMAN auto env is set to true
+  lineinfile:
+    path: "{{ ansible_env.HOME }}/.sdkman/etc/config"
+    regexp: '^sdkman_auto_env='
+    line: 'sdkman_auto_env=true'
+    backrefs: yes
+
+- name: Install nvm
+  ansible.builtin.shell: >
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/{{ nvm_version }}/install.sh | bash
+  args:
+    creates: "{{ ansible_env.HOME }}/.nvm/nvm.sh"
+
+- name: Use NVM
+  ansible.builtin.shell: >
+    source {{ ansible_env.HOME }}/.nvm/nvm.sh
+    nvm install {{ node_version }}
+    nvm use {{ node_version }}        
+    nvm alias default {{ node_version }}
+  args:
+    executable: /bin/bash
+
+- name: Remove the Temp Folder
+  become: true
+  ansible.builtin.file:
+    path: "{{ tmpdir.path }}"
+    state: absent
+
+- name: Reset ssh connection to apply user changes
+  meta: reset_connection
+
+- name: Setup Common VSCode Extensions
+  command: /usr/bin/code-server --install-extension {{ item }} 
+  loop:
+    - esbenp.prettier-vscode
+    - hashicorp.terraform
+    - mhutchie.git-graph
+    - ms-python.black-formatter
+    - ms-python.debugpy
+    - ms-python.python
+    - redhat.java
+    - redhat.vscode-yaml
+    - tamasfe.even-better-toml
+    - redhat.vscode-xml
+    - hediet.vscode-drawio
+    - hashicorp.hcl
+    # - sonarsource.sonarlint-vscode
+
+    
+- name: Check if Oh-My-Bash is already installed
+  ansible.builtin.stat:
+    path: "{{ ansible_env.HOME }}/.oh-my-bash"
+  register: oh_my_bash
+
+- name: Install Oh-My-Bash
+  ansible.builtin.shell: 
+    cmd: bash -c "$(curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh)"
+    creates: "{{ ansible_env.HOME }}/.oh-my-bash"
+  when: not oh_my_bash.stat.exists
+
+- name: Ensure NVM environment setup
+  blockinfile:
+    path: "{{ ansible_env.HOME }}/.profile"
+    block: |
+      export NVM_DIR="$HOME/.nvm"
+      [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+      [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+    marker: "# {mark} ANSIBLE MANAGED BLOCK NVM"
+    insertbefore: EOF  # This ensures the block is placed before the end of the file marker if specified.
+    create: yes
+
+- name: Ensure SDKMAN is added to profile setup
+  blockinfile:
+    path: "{{ ansible_env.HOME }}/.profile"
+    block: |
+      source ~/.sdkmanshrc
+    marker: "# {mark} ANSIBLE MANAGED BLOCK SDKMAN"
+    insertbefore: EOF  # This ensures the block is placed before the end of the file marker if specified.
+    create: yes

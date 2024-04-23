@@ -1,0 +1,10 @@
+#cloud-config
+package_update: true
+
+packages:
+  - python3-pip
+  - ansible
+
+runcmd:
+  - sudo mkdir /Works/
+  - sudo chown -R ubuntu:ubuntu /Works/

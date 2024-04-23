@@ -1,0 +1,91 @@
+- name: Add Docker Repository Scripts
+  ansible.builtin.copy:
+    content: |
+      install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+      chmod a+r /etc/apt/keyrings/docker.asc
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+      apt-get update
+    dest: /tmp/docker.install.sh
+    owner: root
+    group: root
+    mode: 0755
+    force: true
+
+- name: Trigger Docker Setup Script
+  shell: /tmp/docker.install.sh
+
+- name: Install docker and its dependecies
+  apt:
+    name: "{{ packages }}"
+    state: present
+    update_cache: yes
+  vars:
+    packages:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+
+- name: Ensure handlers are notified now to avoid firewall conflicts.
+  meta: flush_handlers
+  
+- name: Add {{ box_user }} user to docker group
+  user:
+    name: "{{ box_user}}"
+    group: "{{ box_user}}"
+    groups:
+      - docker
+    append: yes
+  notify: 'restart docker'
+
+- name: Enable Buildkit
+  ansible.builtin.copy:
+    content: >-
+      {
+        "features": {
+          "buildkit": true
+        }
+      }
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: 0644
+    force: true
+  notify: 'restart docker'
+
+- name: Create docker.service.d directory
+  file:
+    path: /etc/systemd/system/docker.service.d/
+    state: directory
+    owner: root
+    group: root
+    mode: 0755
+  notify: 'restart docker'
+
+- name: Copy docker.service drop-in
+  template:
+    src: templates/docker.service.j2
+    dest: /etc/systemd/system/docker.service.d/override.conf
+    owner: root
+    group: root
+    mode: 0644
+  notify: 'restart docker'
+
+- name: Create docker cli plugins directory
+  file:
+    path: /usr/lib/docker/cli-plugins
+    state: directory
+    owner: root
+    group: root
+    mode: 0755
+
+- name: Download the Docker compose file
+  get_url:
+    url: https://github.com/docker/compose/releases/download/v2.26.0/docker-compose-linux-{{ ansible_architecture }}
+    dest: /usr/lib/docker/cli-plugins/docker-compose
+    mode: 0755
+
+- name: Ensure handlers are notified now to avoid firewall conflicts.
+  meta: flush_handlers

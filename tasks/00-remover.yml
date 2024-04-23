@@ -1,0 +1,19 @@
+- name: Remove Caddy
+  ansible.builtin.apt:
+    name: caddy
+    state: absent
+  ignore_errors: true
+
+- name: Remove Caddy repository
+  ansible.builtin.apt_repository:
+    repo: deb [signed-by=/etc/apt/trusted.gpg.d/caddy.asc] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main
+    state: absent
+    filename: caddy-stable
+    update_cache: yes      
+  ignore_errors: true
+
+- name: Remove Caddy GPG key
+  ansible.builtin.file:
+    path: /etc/apt/trusted.gpg.d/caddy.asc
+    state: absent
+  ignore_errors: true

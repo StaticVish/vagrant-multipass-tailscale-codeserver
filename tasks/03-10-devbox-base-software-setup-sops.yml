@@ -1,0 +1,28 @@
+---
+- name: Check architecture
+  ansible.builtin.set_fact:
+    sops_arch: "{{ ansible_architecture }}"
+
+- name: Adjust download URL for architecture
+  ansible.builtin.set_fact:
+    sops_download_url: "{{ sops_download_url }}.{{ architecture_mapping[sops_arch] }}"
+
+- name: Check if SOPS is already installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/sops
+  register: sops_stat
+
+- name: Download SOPS
+  ansible.builtin.get_url:
+    url: "{{ sops_download_url }}"
+    dest: "/tmp/sops"
+    mode: '0755'
+  when: sops_stat.stat.exists == false
+
+- name: Copy SOPS to /usr/local/bin/
+  ansible.builtin.copy:
+    src: "/tmp/sops"
+    dest: "/usr/local/bin/sops"
+    mode: '0755'
+    remote_src: yes
+  when: sops_stat.stat.exists == false

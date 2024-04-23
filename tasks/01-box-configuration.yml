@@ -1,0 +1,136 @@
+- name: Update resolved.conf to set Domains
+  ansible.builtin.lineinfile:
+    path: /etc/systemd/resolved.conf
+    regexp: '^#?DNS='
+    line: 'DNS=8.8.8.8,1.1.1.1,8.8.4.4,9.9.9.9'
+    backrefs: yes
+
+- name: Restart systemd-resolved service
+  ansible.builtin.systemd:
+    name: systemd-resolved.service
+    state: restarted
+
+- name: Check if systemd-resolved service is running
+  ansible.builtin.systemd:
+    name: systemd-resolved.service
+    state: started
+  register: systemd_resolved_status
+
+- name: Assert systemd-resolved service is active and running
+  ansible.builtin.assert:
+    that:
+      - systemd_resolved_status.status.ActiveState == 'active'
+    fail_msg: "systemd-resolved service is not running"
+    success_msg: "systemd-resolved service is running and active"
+
+- name: Switch on Swap 
+  shell: swapoff -a
+  
+- name: Create a File Swap for 5G
+  shell:  fallocate  -l 5G /swap.img
+
+- name: Make Swap
+  shell:  mkswap /swap.img
+
+- name: Enable ZRAM
+  shell: |-
+    echo 0 > /sys/module/zswap/parameters/enabled
+
+- name: Mount swap.img
+  lineinfile:
+    path: /etc/fstab
+    state: present
+    regexp: '^/swap.img.*'
+    line: '/swap.img       none    swap    sw      0       0'
+
+- name: Setup ZRAM Size
+  ansible.builtin.copy:
+    content: >-
+      SIZE=5G
+    dest: /etc/default/zramswap
+    owner: root
+    group: root
+    mode: 0644
+    force: true
+
+- name: Create a Mount Point
+  ansible.builtin.file:
+    path: /Works
+    state: directory
+    recurse: yes
+    owner: vagrant
+    group: vagrant
+
+- name: Create a new xfs Works partition
+  community.general.parted:
+    device: /dev/sdb
+    number: 1
+    state: present
+    fs_type: xfs
+
+- name: Mount up Works Disk
+  ansible.posix.mount:
+    path: /Works
+    src: /dev/sdb1
+    fstype: xfs
+    state: unmounted
+
+- name: Make the Filesystem for the Works Partition
+  community.general.filesystem:
+    dev: /dev/sdb1
+    fstype: xfs
+
+- name: Increase the size of the partition
+  ansible.builtin.command: 
+    cmd: "parted /dev/sdb1 --script resizepart 1 100%"
+  register: resize_partition_result
+  failed_when: '"Error" in resize_partition_result.stderr'
+  changed_when: '"Information" in resize_partition_result.stdout'
+
+- name: Mount up Works Disk
+  ansible.posix.mount:
+    path: /Works
+    src: /dev/sdb1
+    fstype: xfs
+    state: mounted
+
+- name: Create a new ext4 /var/lib/docker partition
+  community.general.parted:
+    device: /dev/sdc
+    number: 1
+    state: present
+    fs_type: ext4
+
+- name: Make the Filesystem for the /var/lib/docker Partition
+  community.general.filesystem:
+    dev: /dev/sdc1
+    fstype: ext4
+
+- name: Mount up Works Disk
+  ansible.posix.mount:
+    path: /var/lib/docker
+    src: /dev/sdc1
+    fstype: ext4
+    state: mounted
+
+- name: Change Group
+  shell: |
+    chgrp -hR vagrant /Works  &&
+    chown -R vagrant:vagrant /Works
+
+- name: Configure Samba for Vagrant
+  shell: >
+    (pdbedit --user=vagrant 2>&1 > /dev/null)
+    || (echo 'vagrant'; echo 'vagrant')
+    | smbpasswd -s -a vagrant
+  register: smbpasswd
+  changed_when: "'Added user' in smbpasswd.stdout"
+
+- name: Copy docker.service drop-in
+  template:
+    src: templates/smb.conf.j2
+    dest: /etc/samba/smb.conf
+    owner: root
+    group: root
+    mode: 0644
+  notify: 'restart smbd'

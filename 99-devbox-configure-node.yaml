@@ -1,0 +1,48 @@
+- name: Remove PJK Mistakes
+  hosts: devbox
+  become: true
+  vars_files:  
+    - vars/main.yml
+    - vars/vagrant.yml
+  tasks:
+    - include_tasks: tasks/00-remover.yml
+
+- name: Configure the base devbox.
+  hosts: devbox
+  become: true
+  vars_files:  
+    - vars/main.yml  
+    - vars/vagrant.yml
+  tasks:
+    - include_tasks: tasks/01-base-packages.yml
+    - include_tasks: tasks/01-box-configuration.yml
+    - include_tasks: tasks/02-docker-configuration.yml
+    - include_tasks: tasks/03-devbox-base-software-setup.yml
+  handlers:
+    - include: handlers/main.yml    
+
+- name: Software Installation as {{ ansible_env.USER }}
+  hosts: devbox
+  become: no
+  vars_files:  
+    - vars/main.yml  
+    - vars/vagrant.yml
+  roles:
+    - role: gantsign.sdkman
+      sdkman_users:
+        - "{{ ansible_env.USER }}"
+  tasks:
+    - include_tasks: tasks/04-devbox-user-software-setup.yml
+  handlers:
+    - include: handlers/main.yml        
+
+- name: Final APT Package CleanUp
+  hosts: devbox
+  become: true
+  vars_files:  
+    - vars/main.yml  
+    - vars/vagrant.yml
+  tasks:
+    - include_tasks: tasks/90-cleanup.yml
+  handlers:
+    - include: handlers/main.yml        

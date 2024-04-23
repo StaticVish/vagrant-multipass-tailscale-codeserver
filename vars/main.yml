@@ -1,0 +1,10 @@
+tailscale_device_name: "{{ git_username | lower }}-devbox"
+caddy_version: "2.7.6"
+terraform_version: "1.5.7"
+terragrunt_version : "0.55.0"
+aws_sso_cli_version: "1.14.3"
+nvm_version: "v0.39.5"
+node_version: "v20.11.0"  # Use "node" for the latest version  
+sops_version: "v3.8.1" # Use the desired SOPS version
+sops_download_url: "https://github.com/mozilla/sops/releases/download/{{ sops_version }}/sops-{{ sops_version }}.linux"
+architecture_mapping: { "x86_64": "amd64", "aarch64": "arm64" }
